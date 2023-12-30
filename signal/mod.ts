@@ -1,12 +1,12 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 /**
  * Higher level API for dealing with OS signals.
  *
  * @module
+ * @deprecated (will be removed in 0.212.0) Use the {@link https://docs.deno.com/runtime/tutorials/os_signals|Deno Signals API} directly instead.
  */
 
 import { MuxAsyncIterator } from "../async/mux_async_iterator.ts";
-import { deferred } from "../async/deferred.ts";
 
 export type Disposable = { dispose: () => void };
 
@@ -17,20 +17,22 @@ export type Disposable = { dispose: () => void };
  * Example:
  *
  * ```ts
- *       import { signal } from "./mod.ts";
+ * import { signal } from "https://deno.land/std@$STD_VERSION/signal/mod.ts";
  *
- *       const sig = signal("SIGUSR1", "SIGINT");
- *       setTimeout(() => {}, 5000); // Prevents exiting immediately
+ * const sig = signal("SIGUSR1", "SIGINT");
+ * setTimeout(() => {}, 5000); // Prevents exiting immediately
  *
- *       for await (const _ of sig) {
- *         console.log("interrupt or usr1 signal received");
- *       }
+ * for await (const _ of sig) {
+ *   // ..
+ * }
  *
- *       // At some other point in your code when finished listening:
- *       sig.dispose();
+ * // At some other point in your code when finished listening:
+ * sig.dispose();
  * ```
  *
  * @param signals - one or more signals to listen to
+ *
+ * @deprecated (will be removed in 0.212.0) Use the {@link https://docs.deno.com/runtime/tutorials/os_signals|Deno Signals API} directly instead.
  */
 export function signal(
   ...signals: [Deno.Signal, ...Deno.Signal[]]
@@ -62,15 +64,15 @@ export function signal(
 function createSignalStream(
   signal: Deno.Signal,
 ): AsyncIterable<void> & Disposable {
-  let streamContinues = deferred<boolean>();
+  let streamContinues = Promise.withResolvers<boolean>();
   const handler = () => {
     streamContinues.resolve(true);
   };
   Deno.addSignalListener(signal, handler);
 
   const gen = async function* () {
-    while (await streamContinues) {
-      streamContinues = deferred<boolean>();
+    while (await streamContinues.promise) {
+      streamContinues = Promise.withResolvers<boolean>();
       yield undefined;
     }
   };

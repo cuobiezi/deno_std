@@ -1,10 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals } from "../assert/mod.ts";
 import { sortBy } from "./sort_by.ts";
 
 Deno.test({
-  name: "[collections/sortBy] no mutation",
+  name: "sortBy() handles no mutation",
   fn() {
     const array = ["a", "abc", "ba"];
     sortBy(array, (it) => it.length);
@@ -14,7 +14,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[collections/sortBy] calls the selector function once",
+  name: "sortBy() calls the selector function once",
   fn() {
     let callCount = 0;
     const array = [0, 1, 2];
@@ -28,21 +28,21 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[collections/sortBy] empty input",
+  name: "sortBy() handles empty input",
   fn() {
     assertEquals(sortBy([], () => 5), []);
   },
 });
 
 Deno.test({
-  name: "[collections/sortBy] identity selector",
+  name: "sortBy() handles identity selector",
   fn() {
     assertEquals(sortBy([2, 3, 1], (it) => it), [1, 2, 3]);
   },
 });
 
 Deno.test({
-  name: "[collections/sortBy] stable sort",
+  name: "sortBy() handles stable sort",
   fn() {
     assertEquals(
       sortBy([
@@ -81,7 +81,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[collections/sortBy] special number values",
+  name: "sortBy() handles special number values",
   fn() {
     assertEquals(
       sortBy([
@@ -147,7 +147,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[collections/sortBy] sortings",
+  name: "sortBy() handles sortings",
   fn() {
     const testArray = [
       { name: "benchmark", stage: 3 },
@@ -193,6 +193,30 @@ Deno.test({
         "December 17, 1995",
         "June 12, 2012",
         "February 1, 2022",
+      ],
+    );
+  },
+});
+
+Deno.test({
+  name: "sortBy() handles desc ordering",
+  fn() {
+    assertEquals(
+      sortBy(
+        [
+          "January 27, 1995",
+          "November 26, 2020",
+          "June 17, 1952",
+          "July 15, 1993",
+        ],
+        (it) => new Date(it),
+        { order: "desc" },
+      ),
+      [
+        "November 26, 2020",
+        "January 27, 1995",
+        "July 15, 1993",
+        "June 17, 1952",
       ],
     );
   },

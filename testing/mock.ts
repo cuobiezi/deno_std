@@ -1,18 +1,245 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 /** A mocking and spying library.
+ *
+ * Test spies are function stand-ins that are used to assert if a function's
+ * internal behavior matches expectations. Test spies on methods keep the original
+ * behavior but allow you to test how the method is called and what it returns.
+ * Test stubs are an extension of test spies that also replaces the original
+ * methods behavior.
+ *
+ * ## Spying
+ *
+ * Say we have two functions, `square` and `multiply`, if we want to assert that
+ * the `multiply` function is called during execution of the `square` function we
+ * need a way to spy on the `multiply` function. There are a few ways to achieve
+ * this with Spies, one is to have the `square` function take the `multiply`
+ * multiply as a parameter.
+ *
+ * This way, we can call `square(multiply, value)` in the application code or wrap
+ * a spy function around the `multiply` function and call
+ * `square(multiplySpy, value)` in the testing code.
+ *
+ * ```ts
+ * import {
+ *   assertSpyCall,
+ *   assertSpyCalls,
+ *   spy,
+ * } from "https://deno.land/std@$STD_VERSION/testing/mock.ts";
+ * import { assertEquals } from "https://deno.land/std@$STD_VERSION/assert/assert_equals.ts";
+ *
+ * function multiply(a: number, b: number): number {
+ *   return a * b;
+ * }
+ *
+ * function square(
+ *   multiplyFn: (a: number, b: number) => number,
+ *   value: number,
+ * ): number {
+ *   return multiplyFn(value, value);
+ * }
+ *
+ * Deno.test("square calls multiply and returns results", () => {
+ *   const multiplySpy = spy(multiply);
+ *
+ *   assertEquals(square(multiplySpy, 5), 25);
+ *
+ *   // asserts that multiplySpy was called at least once and details about the first call.
+ *   assertSpyCall(multiplySpy, 0, {
+ *     args: [5, 5],
+ *     returned: 25,
+ *   });
+ *
+ *   // asserts that multiplySpy was only called once.
+ *   assertSpyCalls(multiplySpy, 1);
+ * });
+ * ```
+ *
+ * If you prefer not adding additional parameters for testing purposes only, you
+ * can use spy to wrap a method on an object instead. In the following example, the
+ * exported `_internals` object has the `multiply` function we want to call as a
+ * method and the `square` function calls `_internals.multiply` instead of
+ * `multiply`.
+ *
+ * This way, we can call `square(value)` in both the application code and testing
+ * code. Then spy on the `multiply` method on the `_internals` object in the
+ * testing code to be able to spy on how the `square` function calls the `multiply`
+ * function.
+ *
+ * ```ts
+ * import {
+ *   assertSpyCall,
+ *   assertSpyCalls,
+ *   spy,
+ * } from "https://deno.land/std@$STD_VERSION/testing/mock.ts";
+ * import { assertEquals } from "https://deno.land/std@$STD_VERSION/assert/assert_equals.ts";
+ *
+ * function multiply(a: number, b: number): number {
+ *   return a * b;
+ * }
+ *
+ * function square(value: number): number {
+ *   return _internals.multiply(value, value);
+ * }
+ *
+ * const _internals = { multiply };
+ *
+ * Deno.test("square calls multiply and returns results", () => {
+ *   const multiplySpy = spy(_internals, "multiply");
+ *
+ *   try {
+ *     assertEquals(square(5), 25);
+ *   } finally {
+ *     // unwraps the multiply method on the _internals object
+ *     multiplySpy.restore();
+ *   }
+ *
+ *   // asserts that multiplySpy was called at least once and details about the first call.
+ *   assertSpyCall(multiplySpy, 0, {
+ *     args: [5, 5],
+ *     returned: 25,
+ *   });
+ *
+ *   // asserts that multiplySpy was only called once.
+ *   assertSpyCalls(multiplySpy, 1);
+ * });
+ * ```
+ *
+ * One difference you may have noticed between these two examples is that in the
+ * second we call the `restore` method on `multiplySpy` function. That is needed to
+ * remove the spy wrapper from the `_internals` object's `multiply` method. The
+ * `restore` method is called in a finally block to ensure that it is restored
+ * whether or not the assertion in the try block is successful. The `restore`
+ * method didn't need to be called in the first example because the `multiply`
+ * function was not modified in any way like the `_internals` object was in the
+ * second example.
+ *
+ * ## Stubbing
+ *
+ * Say we have two functions, `randomMultiple` and `randomInt`, if we want to
+ * assert that `randomInt` is called during execution of `randomMultiple` we need a
+ * way to spy on the `randomInt` function. That could be done with either of the
+ * spying techniques previously mentioned. To be able to verify that the
+ * `randomMultiple` function returns the value we expect it to for what `randomInt`
+ * returns, the easiest way would be to replace the `randomInt` function's behavior
+ * with more predictable behavior.
+ *
+ * You could use the first spying technique to do that but that would require
+ * adding a `randomInt` parameter to the `randomMultiple` function.
+ *
+ * You could also use the second spying technique to do that, but your assertions
+ * would not be as predictable due to the `randomInt` function returning random
+ * values.
+ *
+ * Say we want to verify it returns correct values for both negative and positive
+ * random integers. We could easily do that with stubbing. The below example is
+ * similar to the second spying technique example but instead of passing the call
+ * through to the original `randomInt` function, we are going to replace
+ * `randomInt` with a function that returns pre-defined values.
+ *
+ * The mock module includes some helper functions to make creating common stubs
+ * easy. The `returnsNext` function takes an array of values we want it to return
+ * on consecutive calls.
+ *
+ * ```ts
+ * import {
+ *   assertSpyCall,
+ *   assertSpyCalls,
+ *   returnsNext,
+ *   stub,
+ * } from "https://deno.land/std@$STD_VERSION/testing/mock.ts";
+ * import { assertEquals } from "https://deno.land/std@$STD_VERSION/assert/assert_equals.ts";
+ *
+ * function randomInt(lowerBound: number, upperBound: number): number {
+ *   return lowerBound + Math.floor(Math.random() * (upperBound - lowerBound));
+ * }
+ *
+ * function randomMultiple(value: number): number {
+ *   return value * _internals.randomInt(-10, 10);
+ * }
+ *
+ * const _internals = { randomInt };
+ *
+ * Deno.test("randomMultiple uses randomInt to generate random multiples between -10 and 10 times the value", () => {
+ *   const randomIntStub = stub(_internals, "randomInt", returnsNext([-3, 3]));
+ *
+ *   try {
+ *     assertEquals(randomMultiple(5), -15);
+ *     assertEquals(randomMultiple(5), 15);
+ *   } finally {
+ *     // unwraps the randomInt method on the _internals object
+ *     randomIntStub.restore();
+ *   }
+ *
+ *   // asserts that randomIntStub was called at least once and details about the first call.
+ *   assertSpyCall(randomIntStub, 0, {
+ *     args: [-10, 10],
+ *     returned: -3,
+ *   });
+ *   // asserts that randomIntStub was called at least twice and details about the second call.
+ *   assertSpyCall(randomIntStub, 1, {
+ *     args: [-10, 10],
+ *     returned: 3,
+ *   });
+ *
+ *   // asserts that randomIntStub was only called twice.
+ *   assertSpyCalls(randomIntStub, 2);
+ * });
+ * ```
+ *
+ * ## Faking time
+ *
+ * Say we have a function that has time based behavior that we would like to test.
+ * With real time, that could cause tests to take much longer than they should. If
+ * you fake time, you could simulate how your function would behave over time
+ * starting from any point in time. Below is an example where we want to test that
+ * the callback is called every second.
+ *
+ * With `FakeTime` we can do that. When the `FakeTime` instance is created, it
+ * splits from real time. The `Date`, `setTimeout`, `clearTimeout`, `setInterval`
+ * and `clearInterval` globals are replaced with versions that use the fake time
+ * until real time is restored. You can control how time ticks forward with the
+ * `tick` method on the `FakeTime` instance.
+ *
+ * ```ts
+ * import {
+ *   assertSpyCalls,
+ *   spy,
+ * } from "https://deno.land/std@$STD_VERSION/testing/mock.ts";
+ * import { FakeTime } from "https://deno.land/std@$STD_VERSION/testing/time.ts";
+ *
+ * function secondInterval(cb: () => void): number {
+ *   return setInterval(cb, 1000);
+ * }
+ *
+ * Deno.test("secondInterval calls callback every second and stops after being cleared", () => {
+ *   using time = new FakeTime();
+ *
+ *   const cb = spy();
+ *   const intervalId = secondInterval(cb);
+ *   assertSpyCalls(cb, 0);
+ *   time.tick(500);
+ *   assertSpyCalls(cb, 0);
+ *   time.tick(500);
+ *   assertSpyCalls(cb, 1);
+ *   time.tick(3500);
+ *   assertSpyCalls(cb, 4);
+ *
+ *   clearInterval(intervalId);
+ *   time.tick(1000);
+ *   assertSpyCalls(cb, 4);
+ * });
+ * ```
  *
  * This module is browser compatible.
  *
  * @module
  */
 
-import {
-  assertEquals,
-  AssertionError,
-  assertIsError,
-  assertRejects,
-} from "./asserts.ts";
+import { assertEquals } from "../assert/assert_equals.ts";
+import { assertIsError } from "../assert/assert_is_error.ts";
+import { assertRejects } from "../assert/assert_rejects.ts";
+import { AssertionError } from "../assert/assertion_error.ts";
 
 /** An error related to spying on a function or instance method. */
 export class MockError extends Error {
@@ -63,24 +290,12 @@ export interface Spy<
 
 /** Wraps a function with a Spy. */
 function functionSpy<
-  // deno-lint-ignore no-explicit-any
-  Self = any,
-  // deno-lint-ignore no-explicit-any
-  Args extends unknown[] = any[],
-  Return = undefined,
->(): Spy<Self, Args, Return>;
-function functionSpy<
-  Self,
-  Args extends unknown[],
-  Return,
->(func: (this: Self, ...args: Args) => Return): Spy<Self, Args, Return>;
-function functionSpy<
   Self,
   Args extends unknown[],
   Return,
 >(func?: (this: Self, ...args: Args) => Return): Spy<Self, Args, Return> {
-  const original = func ?? (() => {}) as (this: Self, ...args: Args) => Return,
-    calls: SpyCall<Self, Args, Return>[] = [];
+  const original = func ?? (() => {}) as (this: Self, ...args: Args) => Return;
+  const calls: SpyCall<Self, Args, Return>[] = [];
   const spy = function (this: Self, ...args: Args): Return {
     const call: SpyCall<Self, Args, Return> = { args };
     if (this) call.self = this;
@@ -295,6 +510,58 @@ function methodSpy<
   return spy;
 }
 
+/** A constructor wrapper that records all calls made to it. */
+export interface ConstructorSpy<
+  // deno-lint-ignore no-explicit-any
+  Self = any,
+  // deno-lint-ignore no-explicit-any
+  Args extends unknown[] = any[],
+> {
+  new (...args: Args): Self;
+  /** The function that is being spied on. */
+  original: new (...args: Args) => Self;
+  /** Information about calls made to the function or instance method. */
+  calls: SpyCall<Self, Args, Self>[];
+  /** Whether or not the original instance method has been restored. */
+  restored: boolean;
+  /** If spying on an instance method, this restores the original instance method. */
+  restore(): void;
+}
+
+/** Wraps a constructor with a Spy. */
+function constructorSpy<
+  Self,
+  Args extends unknown[],
+>(
+  constructor: new (...args: Args) => Self,
+): ConstructorSpy<Self, Args> {
+  const original = constructor;
+  const calls: SpyCall<Self, Args, Self>[] = [];
+  // @ts-ignore TS2509: Can't know the type of `original` statically.
+  const spy = class extends original {
+    constructor(...args: Args) {
+      super(...args);
+      const call: SpyCall<Self, Args, Self> = { args };
+      try {
+        call.returned = this as unknown as Self;
+      } catch (error) {
+        call.error = error as Error;
+        calls.push(call);
+        throw error;
+      }
+      calls.push(call);
+    }
+    static readonly name = original.name;
+    static readonly original = original;
+    static readonly calls = calls;
+    static readonly restored = false;
+    static restore() {
+      throw new MockError("constructor cannot be restored");
+    }
+  } as ConstructorSpy<Self, Args>;
+  return spy;
+}
+
 /** Utility for extracting the arguments type from a property */
 type GetParametersFromProp<
   Self,
@@ -309,6 +576,15 @@ type GetReturnFromProp<
 > // deno-lint-ignore no-explicit-any
  = Self[Prop] extends (...args: any[]) => infer Return ? Return
   : unknown;
+
+type SpyLike<
+  // deno-lint-ignore no-explicit-any
+  Self = any,
+  // deno-lint-ignore no-explicit-any
+  Args extends unknown[] = any[],
+  // deno-lint-ignore no-explicit-any
+  Return = any,
+> = Spy<Self, Args, Return> | ConstructorSpy<Self, Args>;
 
 /** Wraps a function or instance method with a Spy. */
 export function spy<
@@ -325,6 +601,13 @@ export function spy<
 >(func: (this: Self, ...args: Args) => Return): Spy<Self, Args, Return>;
 export function spy<
   Self,
+  Args extends unknown[],
+  Return = undefined,
+>(
+  constructor: new (...args: Args) => Self,
+): ConstructorSpy<Self, Args>;
+export function spy<
+  Self,
   Prop extends keyof Self,
 >(
   self: Self,
@@ -335,17 +618,25 @@ export function spy<
   Args extends unknown[],
   Return,
 >(
-  funcOrSelf?: ((this: Self, ...args: Args) => Return) | Self,
+  funcOrConstOrSelf?:
+    | ((this: Self, ...args: Args) => Return)
+    | (new (...args: Args) => Self)
+    | Self,
   property?: keyof Self,
-): Spy<Self, Args, Return> {
-  const spy = typeof property !== "undefined"
-    ? methodSpy<Self, Args, Return>(funcOrSelf as Self, property)
-    : typeof funcOrSelf === "function"
-    ? functionSpy<Self, Args, Return>(
-      funcOrSelf as (this: Self, ...args: Args) => Return,
-    )
-    : functionSpy<Self, Args, Return>();
-  return spy;
+): SpyLike<Self, Args, Return> {
+  if (!funcOrConstOrSelf) {
+    return functionSpy<Self, Args, Return>();
+  } else if (property !== undefined) {
+    return methodSpy<Self, Args, Return>(funcOrConstOrSelf as Self, property);
+  } else if (funcOrConstOrSelf.toString().startsWith("class")) {
+    return constructorSpy<Self, Args>(
+      funcOrConstOrSelf as new (...args: Args) => Self,
+    );
+  } else {
+    return functionSpy<Self, Args, Return>(
+      funcOrConstOrSelf as (this: Self, ...args: Args) => Return,
+    );
+  }
 }
 
 /** An instance method replacement that records all calls made to it. */
@@ -475,7 +766,7 @@ export function assertSpyCalls<
   Args extends unknown[],
   Return,
 >(
-  spy: Spy<Self, Args, Return>,
+  spy: SpyLike<Self, Args, Return>,
   expectedCalls: number,
 ) {
   try {
@@ -525,7 +816,7 @@ export function assertSpyCall<
   Args extends unknown[],
   Return,
 >(
-  spy: Spy<Self, Args, Return>,
+  spy: SpyLike<Self, Args, Return>,
   callIndex: number,
   expected?: ExpectedSpyCall<Self, Args, Return>,
 ) {
@@ -604,7 +895,7 @@ export async function assertSpyCallAsync<
   Args extends unknown[],
   Return,
 >(
-  spy: Spy<Self, Args, Promise<Return>>,
+  spy: SpyLike<Self, Args, Promise<Return>>,
   callIndex: number,
   expected?: ExpectedSpyCall<Self, Args, Promise<Return> | Return>,
 ) {
@@ -685,7 +976,7 @@ export function assertSpyCallArg<
   Return,
   ExpectedArg,
 >(
-  spy: Spy<Self, Args, Return>,
+  spy: SpyLike<Self, Args, Return>,
   callIndex: number,
   argIndex: number,
   expected: ExpectedArg,
@@ -709,7 +1000,7 @@ export function assertSpyCallArgs<
   Return,
   ExpectedArgs extends unknown[],
 >(
-  spy: Spy<Self, Args, Return>,
+  spy: SpyLike<Self, Args, Return>,
   callIndex: number,
   expected: ExpectedArgs,
 ): ExpectedArgs;
@@ -719,7 +1010,7 @@ export function assertSpyCallArgs<
   Return,
   ExpectedArgs extends unknown[],
 >(
-  spy: Spy<Self, Args, Return>,
+  spy: SpyLike<Self, Args, Return>,
   callIndex: number,
   argsStart: number,
   expected: ExpectedArgs,
@@ -730,7 +1021,7 @@ export function assertSpyCallArgs<
   Return,
   ExpectedArgs extends unknown[],
 >(
-  spy: Spy<Self, Args, Return>,
+  spy: SpyLike<Self, Args, Return>,
   callIndex: number,
   argStart: number,
   argEnd: number,
@@ -742,7 +1033,7 @@ export function assertSpyCallArgs<
   Return,
   Self,
 >(
-  spy: Spy<Self, Args, Return>,
+  spy: SpyLike<Self, Args, Return>,
   callIndex: number,
   argsStart?: number | ExpectedArgs,
   argsEnd?: number | ExpectedArgs,

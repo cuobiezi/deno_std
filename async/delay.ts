@@ -1,23 +1,48 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // This module is browser compatible.
-import { unrefTimer } from "../_deno_unstable.ts";
 
+/** Options for {@linkcode delay}. */
 export interface DelayOptions {
+  /** Signal used to abort the delay. */
   signal?: AbortSignal;
-  /** Indicates whether the process should continue to run as long as the timer exists. This is `true` by default. */
+  /** Indicates whether the process should continue to run as long as the timer exists.
+   *
+   * @default {true}
+   */
   persistent?: boolean;
 }
 
-/* Resolves after the given number of milliseconds. */
+/**
+ * Resolve a {@linkcode Promise} after a given amount of milliseconds.
+ *
+ * @example
+ * ```ts
+ * import { delay } from "https://deno.land/std@$STD_VERSION/async/delay.ts";
+ *
+ * // ...
+ * const delayedPromise = delay(100);
+ * const result = await delayedPromise;
+ * // ...
+ * ```
+ *
+ * To allow the process to continue to run as long as the timer exists. Requires
+ * `--unstable` flag.
+ *
+ * ```ts
+ * import { delay } from "https://deno.land/std@$STD_VERSION/async/delay.ts";
+ *
+ * // ...
+ * await delay(100, { persistent: false });
+ * // ...
+ * ```
+ */
 export function delay(ms: number, options: DelayOptions = {}): Promise<void> {
   const { signal, persistent } = options;
-  if (signal?.aborted) {
-    return Promise.reject(new DOMException("Delay was aborted.", "AbortError"));
-  }
+  if (signal?.aborted) return Promise.reject(signal.reason);
   return new Promise((resolve, reject) => {
     const abort = () => {
       clearTimeout(i);
-      reject(new DOMException("Delay was aborted.", "AbortError"));
+      reject(signal?.reason);
     };
     const done = () => {
       signal?.removeEventListener("abort", abort);
@@ -26,7 +51,15 @@ export function delay(ms: number, options: DelayOptions = {}): Promise<void> {
     const i = setTimeout(done, ms);
     signal?.addEventListener("abort", abort, { once: true });
     if (persistent === false) {
-      unrefTimer(i);
+      try {
+        // @ts-ignore For browser compatibility
+        Deno.unrefTimer(i);
+      } catch (error) {
+        if (!(error instanceof ReferenceError)) {
+          throw error;
+        }
+        console.error("`persistent` option is only available in Deno");
+      }
     }
   });
 }

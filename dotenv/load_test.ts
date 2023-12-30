@@ -1,22 +1,24 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { assertEquals } from "../testing/asserts.ts";
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+import { assertEquals } from "../assert/mod.ts";
 import * as path from "../path/mod.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test({
-  name: "load",
+  name: "load()",
   async fn() {
-    const { stdout } = await Deno.spawn(Deno.execPath(), {
+    const command = new Deno.Command(Deno.execPath(), {
       args: [
         "run",
         "--allow-read",
         "--allow-env",
         path.join(testdataDir, "./app_load.ts"),
       ],
+      clearEnv: true,
       cwd: testdataDir,
     });
+    const { stdout } = await command.output();
 
     const decoder = new TextDecoder();
     assertEquals(
@@ -27,17 +29,19 @@ Deno.test({
 });
 
 Deno.test({
-  name: "load when multiple files",
+  name: "load() works as expected when the multiple files are imported",
   async fn() {
-    const { stdout } = await Deno.spawn(Deno.execPath(), {
+    const command = new Deno.Command(Deno.execPath(), {
       args: [
         "run",
         "--allow-read",
         "--allow-env",
         path.join(testdataDir, "./app_load_parent.ts"),
       ],
+      clearEnv: true,
       cwd: testdataDir,
     });
+    const { stdout } = await command.output();
 
     const decoder = new TextDecoder();
     assertEquals(

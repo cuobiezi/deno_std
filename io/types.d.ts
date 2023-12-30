@@ -1,5 +1,19 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// This module is browser compatible.
 
+/**
+ * See the Contributing > Types section in the README for an explanation of this file.
+ *
+ * @deprecate (will be removed in 1.0.0) Use the
+ * [Streams API]{@linkcode https://developer.mozilla.org/en-US/docs/Web/API/Streams_API}
+ * instead.
+ */
+
+/**
+ * An abstract interface which when implemented provides an interface to read bytes into an array buffer asynchronously.
+ *
+ * @deprecated (will be removed in 1.0.0) Use {@linkcode ReadableStream} instead.
+ */
 export interface Reader {
   /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number of
    * bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
@@ -20,12 +34,17 @@ export interface Reader {
    *
    * Implementations should not retain a reference to `p`.
    *
-   * Use iterateReader() from https://deno.land/std/streams/conversion.ts to turn a Reader into an
+   * Use iterateReader() from https://deno.land/std@$STD_VERSION/streams/iterate_reader.ts to turn a Reader into an
    * AsyncIterator.
    */
   read(p: Uint8Array): Promise<number | null>;
 }
 
+/**
+ * An abstract interface which when implemented provides an interface to read bytes into an array buffer synchronously.
+ *
+ * @deprecated (will be removed in 1.0.0) Use {@linkcode ReadableStream} instead.
+ */
 export interface ReaderSync {
   /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number
    * of bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
@@ -45,12 +64,17 @@ export interface ReaderSync {
    *
    * Implementations should not retain a reference to `p`.
    *
-   * Use iterateReaderSync() from https://deno.land/std/streams/conversion.ts to turn a ReaderSync
+   * Use iterateReaderSync() from https://deno.land/std@$STD_VERSION/streams/iterate_reader.ts to turn a ReaderSync
    * into an Iterator.
    */
   readSync(p: Uint8Array): number | null;
 }
 
+/**
+ * An abstract interface which when implemented provides an interface to write bytes from an array buffer to a file/resource asynchronously.
+ *
+ * @deprecated (will be removed in 1.0.0) Use {@linkcode WritableStream} instead.
+ */
 export interface Writer {
   /** Writes `p.byteLength` bytes from `p` to the underlying data stream. It
    * resolves to the number of bytes written from `p` (`0` <= `n` <=
@@ -63,7 +87,11 @@ export interface Writer {
    */
   write(p: Uint8Array): Promise<number>;
 }
-
+/**
+ * An abstract interface which when implemented provides an interface to write bytes from an array buffer to a file/resource synchronously.
+ *
+ * @deprecated (will be removed in 1.0.0) Use {@linkcode WritableStream} instead.
+ */
 export interface WriterSync {
   /** Writes `p.byteLength` bytes from `p` to the underlying data
    * stream. It returns the number of bytes written from `p` (`0` <= `n`
@@ -77,6 +105,12 @@ export interface WriterSync {
   writeSync(p: Uint8Array): number;
 }
 
+/**
+ * An abstract interface which when implemented provides an interface to close files/resources that were previously opened.
+ *
+ * @deprecated (will be removed in 1.0.0) Use {@linkcode ReadableStream} and {@linkcode WritableStream} instead.
+ */
 export interface Closer {
+  /** Closes the resource, "freeing" the backing file/resource. */
   close(): void;
 }

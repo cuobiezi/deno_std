@@ -1,6 +1,8 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { assert } from "../_util/assert.ts";
-import { copy } from "../bytes/mod.ts";
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// This module is browser compatible.
+
+import { assert } from "../assert/assert.ts";
+import { copy } from "../bytes/copy.ts";
 
 const MAX_SIZE = 2 ** 32 - 2;
 const DEFAULT_CHUNK_SIZE = 16_640;
@@ -39,19 +41,25 @@ export class Buffer {
     },
     autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
   });
-  get readable() {
+
+  /** Getter returning the instance's {@linkcode ReadableStream}. */
+  get readable(): ReadableStream<Uint8Array> {
     return this.#readable;
   }
+
   #writable = new WritableStream<Uint8Array>({
     write: (chunk) => {
       const m = this.#grow(chunk.byteLength);
       copy(chunk, this.#buf, m);
     },
   });
-  get writable() {
+
+  /** Getter returning the instance's {@linkcode WritableStream}. */
+  get writable(): WritableStream<Uint8Array> {
     return this.#writable;
   }
 
+  /** Constructs a new instance. */
   constructor(ab?: ArrayBufferLike | ArrayLike<number>) {
     this.#buf = ab === undefined ? new Uint8Array(0) : new Uint8Array(ab);
   }
@@ -60,10 +68,9 @@ export class Buffer {
    *
    * The slice is valid for use only until the next buffer modification (that
    * is, only until the next call to a method like `read()`, `write()`,
-   * `reset()`, or `truncate()`). If `options.copy` is false the slice aliases the buffer content at
-   * least until the next buffer modification, so immediate changes to the
-   * slice will affect the result of future reads.
-   * @param options Defaults to `{ copy: true }`
+   * `reset()`, or `truncate()`). If `options.copy` is false the slice aliases
+   * the buffer content at least until the next buffer modification, so
+   * immediate changes to the slice will affect the result of future reads.
    */
   bytes(options = { copy: true }): Uint8Array {
     if (options.copy === false) return this.#buf.subarray(this.#off);
@@ -86,10 +93,12 @@ export class Buffer {
     return this.#buf.buffer.byteLength;
   }
 
-  /** Discards all but the first `n` unread bytes from the buffer but
+  /**
+   * Discards all but the first `n` unread bytes from the buffer but
    * continues to use the same allocated storage. It throws if `n` is
-   * negative or greater than the length of the buffer. */
-  truncate(n: number) {
+   * negative or greater than the length of the buffer.
+   */
+  truncate(n: number): void {
     if (n === 0) {
       this.reset();
       return;
@@ -100,6 +109,7 @@ export class Buffer {
     this.#reslice(this.#off + n);
   }
 
+  /** Resets to an empty buffer. */
   reset() {
     this.#reslice(0);
     this.#off = 0;
@@ -164,71 +174,5 @@ export class Buffer {
     }
     const m = this.#grow(n);
     this.#reslice(m);
-  }
-}
-
-/** A TransformStream that will only read & enqueue `size` amount of bytes.
- * This operation is chunk based and not BYOB based,
- * and as such will read more than needed.
- *
- * if options.error is set, then instead of terminating the stream,
- * an error will be thrown.
- *
- * ```ts
- * import { LimitedBytesTransformStream } from "./buffer.ts";
- * const res = await fetch("https://example.com");
- * const parts = res.body!
- *   .pipeThrough(new LimitedBytesTransformStream(512 * 1024));
- * ```
- */
-export class LimitedBytesTransformStream
-  extends TransformStream<Uint8Array, Uint8Array> {
-  #read = 0;
-  constructor(size: number, options: { error?: boolean } = {}) {
-    super({
-      transform: (chunk, controller) => {
-        if ((this.#read + chunk.byteLength) > size) {
-          if (options.error) {
-            throw new RangeError(`Exceeded byte size limit of '${size}'`);
-          } else {
-            controller.terminate();
-          }
-        } else {
-          this.#read += chunk.byteLength;
-          controller.enqueue(chunk);
-        }
-      },
-    });
-  }
-}
-
-/** A TransformStream that will only read & enqueue `size` amount of chunks.
- *
- * if options.error is set, then instead of terminating the stream,
- * an error will be thrown.
- *
- * ```ts
- * import { LimitedTransformStream } from "./buffer.ts";
- * const res = await fetch("https://example.com");
- * const parts = res.body!.pipeThrough(new LimitedTransformStream(50));
- * ```
- */
-export class LimitedTransformStream<T> extends TransformStream<T, T> {
-  #read = 0;
-  constructor(size: number, options: { error?: boolean } = {}) {
-    super({
-      transform: (chunk, controller) => {
-        if ((this.#read + 1) > size) {
-          if (options.error) {
-            throw new RangeError(`Exceeded chunk limit of '${size}'`);
-          } else {
-            controller.terminate();
-          }
-        } else {
-          this.#read++;
-          controller.enqueue(chunk);
-        }
-      },
-    });
   }
 }

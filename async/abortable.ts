@@ -1,8 +1,51 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { deferred } from "./deferred.ts";
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// This module is browser compatible.
 
-/** Make Promise or AsyncIterable abortable with the given signal. */
+/**
+ * Make {@linkcode Promise} abortable with the given signal.
+ *
+ * @example
+ * ```ts
+ * import {
+ *   abortable,
+ *   delay,
+ * } from "https://deno.land/std@$STD_VERSION/async/mod.ts";
+ *
+ * const p = delay(1000);
+ * const c = new AbortController();
+ * setTimeout(() => c.abort(), 100);
+ *
+ * // Below throws `DOMException` after 100 ms
+ * await abortable(p, c.signal);
+ * ```
+ */
 export function abortable<T>(p: Promise<T>, signal: AbortSignal): Promise<T>;
+/**
+ * Make {@linkcode AsyncIterable} abortable with the given signal.
+ *
+ * @example
+ * ```ts
+ * import {
+ *   abortable,
+ *   delay,
+ * } from "https://deno.land/std@$STD_VERSION/async/mod.ts";
+ *
+ * const p = async function* () {
+ *   yield "Hello";
+ *   await delay(1000);
+ *   yield "World";
+ * };
+ * const c = new AbortController();
+ * setTimeout(() => c.abort(), 100);
+ *
+ * // Below throws `DOMException` after 100 ms
+ * // and items become `["Hello"]`
+ * const items: string[] = [];
+ * for await (const item of abortable(p(), c.signal)) {
+ *   items.push(item);
+ * }
+ * ```
+ */
 export function abortable<T>(
   p: AsyncIterable<T>,
   signal: AbortSignal,
@@ -18,7 +61,24 @@ export function abortable<T>(
   }
 }
 
-/** Make Promise abortable with the given signal. */
+/**
+ * Make Promise abortable with the given signal.
+ *
+ * @example
+ * ```ts
+ * import { abortablePromise } from "https://deno.land/std@$STD_VERSION/async/abortable.ts";
+ *
+ * const request = fetch("https://example.com");
+ *
+ * const c = new AbortController();
+ * setTimeout(() => c.abort(), 100);
+ *
+ * const p = abortablePromise(request, c.signal);
+ *
+ * // The below throws if the request didn't resolve in 100ms
+ * await p;
+ * ```
+ */
 export function abortablePromise<T>(
   p: Promise<T>,
   signal: AbortSignal,
@@ -26,18 +86,40 @@ export function abortablePromise<T>(
   if (signal.aborted) {
     return Promise.reject(createAbortError(signal.reason));
   }
-  const waiter = deferred<never>();
-  const abort = () => waiter.reject(createAbortError(signal.reason));
+  const { promise, reject } = Promise.withResolvers<never>();
+  const abort = () => reject(createAbortError(signal.reason));
   signal.addEventListener("abort", abort, { once: true });
-  return Promise.race([
-    waiter,
-    p.finally(() => {
-      signal.removeEventListener("abort", abort);
-    }),
-  ]);
+  return Promise.race([promise, p]).finally(() => {
+    signal.removeEventListener("abort", abort);
+  });
 }
 
-/** Make AsyncIterable abortable with the given signal. */
+/**
+ * Make AsyncIterable abortable with the given signal.
+ *
+ * @example
+ * ```ts
+ * import {
+ *   abortableAsyncIterable,
+ *   delay,
+ * } from "https://deno.land/std@$STD_VERSION/async/mod.ts";
+ *
+ * const p = async function* () {
+ *   yield "Hello";
+ *   await delay(1000);
+ *   yield "World";
+ * };
+ * const c = new AbortController();
+ * setTimeout(() => c.abort(), 100);
+ *
+ * // Below throws `DOMException` after 100 ms
+ * // and items become `["Hello"]`
+ * const items: string[] = [];
+ * for await (const item of abortableAsyncIterable(p(), c.signal)) {
+ *   items.push(item);
+ * }
+ * ```
+ */
 export async function* abortableAsyncIterable<T>(
   p: AsyncIterable<T>,
   signal: AbortSignal,
@@ -45,13 +127,17 @@ export async function* abortableAsyncIterable<T>(
   if (signal.aborted) {
     throw createAbortError(signal.reason);
   }
-  const waiter = deferred<never>();
-  const abort = () => waiter.reject(createAbortError(signal.reason));
+  const { promise, reject } = Promise.withResolvers<never>();
+  const abort = () => reject(createAbortError(signal.reason));
   signal.addEventListener("abort", abort, { once: true });
 
   const it = p[Symbol.asyncIterator]();
   while (true) {
-    const { done, value } = await Promise.race([waiter, it.next()]);
+    const race = Promise.race([promise, it.next()]);
+    race.catch(() => {
+      signal.removeEventListener("abort", abort);
+    });
+    const { done, value } = await race;
     if (done) {
       signal.removeEventListener("abort", abort);
       return;
